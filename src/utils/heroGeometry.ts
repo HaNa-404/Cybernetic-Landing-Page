@@ -93,3 +93,45 @@ export function computeParallaxTarget(
   const normalized = Math.min(Math.max(cursorCoord / viewportSize, 0), 1);
   return (normalized - 0.5) * rangePx;
 }
+
+export interface MagneticResult {
+  target: Point2D;
+  buttonOffset: Point2D;
+  active: boolean;
+}
+
+export function computeMagneticTarget(
+  cursor: Point2D,
+  anchor: Point2D,
+  radiusPx = 100,
+  snapStrength = 0.78,
+  buttonPull = 0.14,
+): MagneticResult {
+  if (cursor.x < 0 || cursor.y < 0 || radiusPx <= 0) {
+    return { target: cursor, buttonOffset: { x: 0, y: 0 }, active: false };
+  }
+
+  const dx = anchor.x - cursor.x;
+  const dy = anchor.y - cursor.y;
+  const dist = Math.hypot(dx, dy);
+
+  if (dist >= radiusPx) {
+    return { target: cursor, buttonOffset: { x: 0, y: 0 }, active: false };
+  }
+
+  const t = 1 - dist / radiusPx;
+  const eased = t * t * (3 - 2 * t);
+  const pull = eased * snapStrength;
+
+  return {
+    target: {
+      x: Number((cursor.x + dx * pull).toFixed(2)),
+      y: Number((cursor.y + dy * pull).toFixed(2)),
+    },
+    buttonOffset: {
+      x: Number((-dx * buttonPull * eased).toFixed(2)),
+      y: Number((-dy * buttonPull * eased).toFixed(2)),
+    },
+    active: true,
+  };
+}

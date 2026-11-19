@@ -14,6 +14,12 @@
   font-family: 'JetBrains Mono', monospace;
 }
 
+html,
+body {
+  background-color: #f1f5ff;
+  color: #070e1a;
+}
+
 .font-helvetica-neue {
   font-family: 'JetBrains Mono', monospace;
 }

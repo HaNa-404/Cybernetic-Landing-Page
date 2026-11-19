@@ -5,6 +5,7 @@ import {
   ARC_STATS,
   buildArcPath,
   computeArcLength,
+  computeMagneticTarget,
   computeParallaxTarget,
   lerp,
   polarToCartesian,
@@ -42,4 +43,28 @@ test('lerp and computeParallaxTarget behave deterministically', () => {
   assert.equal(computeParallaxTarget(720, 1440, 16), 0);
   assert.equal(computeParallaxTarget(1440, 1440, 16), 8);
   assert.equal(computeParallaxTarget(0, 1440, 16), -8);
+});
+
+test('computeMagneticTarget snaps toward anchor within 100px radius and stays inert outside', () => {
+  const anchor = { x: 200, y: 700 };
+
+  const offscreen = computeMagneticTarget({ x: -999, y: -999 }, anchor, 100);
+  assert.equal(offscreen.active, false);
+  assert.deepEqual(offscreen.buttonOffset, { x: 0, y: 0 });
+
+  const outside = computeMagneticTarget({ x: 350, y: 700 }, anchor, 100);
+  assert.equal(outside.active, false);
+  assert.deepEqual(outside.target, { x: 350, y: 700 });
+  assert.deepEqual(outside.buttonOffset, { x: 0, y: 0 });
+
+  const near = computeMagneticTarget({ x: 250, y: 700 }, anchor, 100);
+  assert.equal(near.active, true);
+  assert.ok(near.target.x < 250 && near.target.x > 200, 'spotlight target pulls toward anchor');
+  assert.equal(near.target.y, 700);
+  assert.ok(near.buttonOffset.x > 0, 'button shifts slightly toward cursor');
+
+  const centered = computeMagneticTarget({ x: 200, y: 700 }, anchor, 100);
+  assert.equal(centered.active, true);
+  assert.deepEqual(centered.target, anchor);
+  assert.deepEqual(centered.buttonOffset, { x: 0, y: 0 });
 });

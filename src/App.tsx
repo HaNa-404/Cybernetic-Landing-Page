@@ -5,6 +5,7 @@ import {
   ARC_STATS,
   buildArcPath,
   computeArcLength,
+  computeMagneticTarget,
   computeParallaxTarget,
   lerp,
   polarToCartesian,
@@ -47,6 +48,8 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const revealLayerRef = useRef<HTMLDivElement | null>(null);
   const gridPatternRef = useRef<SVGPatternElement | null>(null);
+  const reserveAnchorRef = useRef<HTMLDivElement | null>(null);
+  const reserveMagnetRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -62,9 +65,12 @@ export default function App() {
     };
     syncCanvasSize();
 
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const targetCursor = { x: -999, y: -999 };
     const smoothCursor = { x: -999, y: -999 };
     const smoothGrid = { x: 0, y: 0 };
+    const smoothButton = { x: 0, y: 0 };
+    let lastMagneticState = false;
     let lastDrawnX = Number.NaN;
     let lastDrawnY = Number.NaN;
     let lastDrawnW = 0;
@@ -87,8 +93,43 @@ export default function App() {
     };
 
     const renderFrame = () => {
-      smoothCursor.x = lerp(smoothCursor.x, targetCursor.x, 0.1);
-      smoothCursor.y = lerp(smoothCursor.y, targetCursor.y, 0.1);
+      let effectiveTargetX = targetCursor.x;
+      let effectiveTargetY = targetCursor.y;
+      let desiredBtnX = 0;
+      let desiredBtnY = 0;
+      let isMagnetic = false;
+
+      if (reserveAnchorRef.current && targetCursor.x >= 0 && targetCursor.y >= 0) {
+        const rect = reserveAnchorRef.current.getBoundingClientRect();
+        const anchor = {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        };
+        const magnetic = computeMagneticTarget(targetCursor, anchor, 100);
+        effectiveTargetX = magnetic.target.x;
+        effectiveTargetY = magnetic.target.y;
+        desiredBtnX = magnetic.buttonOffset.x;
+        desiredBtnY = magnetic.buttonOffset.y;
+        isMagnetic = magnetic.active;
+      }
+
+      if (isMagnetic !== lastMagneticState) {
+        revealEl.dataset.magnetic = isMagnetic ? 'true' : 'false';
+        lastMagneticState = isMagnetic;
+      }
+
+      smoothCursor.x = lerp(smoothCursor.x, effectiveTargetX, 0.1);
+      smoothCursor.y = lerp(smoothCursor.y, effectiveTargetY, 0.1);
+
+      if (!prefersReducedMotion && reserveMagnetRef.current) {
+        smoothButton.x = lerp(smoothButton.x, desiredBtnX, 0.16);
+        smoothButton.y = lerp(smoothButton.y, desiredBtnY, 0.16);
+        if (Math.abs(smoothButton.x) < 0.05 && Math.abs(smoothButton.y) < 0.05) {
+          reserveMagnetRef.current.style.transform = '';
+        } else {
+          reserveMagnetRef.current.style.transform = `translate3d(${smoothButton.x.toFixed(2)}px, ${smoothButton.y.toFixed(2)}px, 0)`;
+        }
+      }
 
       const targetGridX = computeParallaxTarget(targetCursor.x, window.innerWidth, 16);
       const targetGridY = computeParallaxTarget(targetCursor.y, window.innerHeight, 16);
@@ -216,12 +257,12 @@ export default function App() {
         className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between md:justify-center p-4 sm:p-5"
       >
         {/* Desktop centered pill */}
-        <div className="nav-drop hidden md:flex items-center gap-1 bg-[#071124]/90 backdrop-blur-md border border-[#1E3A8A]/40 shadow-lg shadow-[#071124]/15 rounded-full pl-3 pr-2 py-2">
+        <div className="nav-drop hidden md:flex items-center gap-1 bg-[#071124]/95 backdrop-blur-md border border-[#0F172A]/25 shadow-lg shadow-[#071124]/15 rounded-full pl-3 pr-2 py-2">
           <button
             type="button"
             onClick={() => handleNavClick('Module')}
             aria-label="Aetheris Home"
-            className="flex items-center justify-center p-1 rounded-full hover:bg-white/10 transition-colors cursor-pointer mr-1"
+            className="flex items-center justify-center p-1 rounded-full hover:bg-white/10 transition-colors cursor-pointer mr-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8]"
           >
             <BrandMark />
           </button>
@@ -234,10 +275,10 @@ export default function App() {
                 type="button"
                 onClick={() => handleNavClick(link)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`text-sm font-medium px-3 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`text-sm font-medium px-3 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8] ${
                   isActive
                     ? 'bg-[#1D4ED8] text-white'
-                    : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                    : 'text-slate-200 hover:bg-white/10 hover:text-white'
                 }`}
               >
                 {link}
@@ -248,7 +289,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => openModal('connect')}
-            className="bg-white text-[#070E1A] text-sm font-semibold px-5 py-1.5 rounded-full hover:bg-blue-50 ml-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="bg-[#f1f5ff] text-[#070E1A] text-sm font-semibold px-5 py-1.5 rounded-full hover:bg-white ml-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D4ED8]"
           >
             Connect
           </button>
@@ -259,7 +300,7 @@ export default function App() {
           type="button"
           onClick={() => handleNavClick('Module')}
           aria-label="Aetheris Home"
-          className="nav-drop md:hidden bg-[#071124]/90 backdrop-blur-md border border-[#1E3A8A]/40 rounded-full p-2.5 flex items-center justify-center cursor-pointer"
+          className="nav-drop md:hidden bg-[#071124]/95 backdrop-blur-md border border-[#0F172A]/25 rounded-full p-2.5 flex items-center justify-center cursor-pointer"
         >
           <BrandMark />
         </button>
@@ -270,7 +311,7 @@ export default function App() {
           onClick={() => setMobileMenuOpen((prev) => !prev)}
           aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
           aria-expanded={mobileMenuOpen}
-          className="nav-drop md:hidden bg-[#071124]/90 backdrop-blur-md border border-[#1E3A8A]/40 rounded-full p-2.5 text-white flex items-center justify-center cursor-pointer"
+          className="nav-drop md:hidden bg-[#071124]/95 backdrop-blur-md border border-[#0F172A]/25 rounded-full p-2.5 text-white flex items-center justify-center cursor-pointer"
         >
           {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
@@ -278,7 +319,7 @@ export default function App() {
 
       {/* Mobile Dropdown */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white pt-16 pb-6 px-5 shadow-lg border-b border-slate-200">
+        <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-[#f1f5ff]/95 backdrop-blur-md pt-16 pb-6 px-5 shadow-lg border-b border-[#0F172A]/15">
           <div className="flex flex-col">
             {NAV_LINKS.map((link) => {
               const isActive = activeNav === link;
@@ -288,7 +329,7 @@ export default function App() {
                   type="button"
                   onClick={() => handleNavClick(link)}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`py-3 border-b border-slate-100 text-left text-sm cursor-pointer ${
+                  className={`py-3 border-b border-[#0F172A]/12 text-left text-sm cursor-pointer ${
                     isActive
                       ? 'text-[#1D4ED8] font-semibold'
                       : 'text-[#070E1A] font-medium'
@@ -327,7 +368,7 @@ export default function App() {
           <svg
             aria-hidden="true"
             className="absolute inset-0 z-20 h-full w-full pointer-events-none mix-blend-multiply"
-            style={{ opacity: 0.07 }}
+            style={{ opacity: 0.09 }}
           >
             <defs>
               <pattern
@@ -407,9 +448,9 @@ export default function App() {
                       y2={end.y}
                     >
                       <stop offset="0%" stopColor="#1D4ED8" stopOpacity={0} />
-                      <stop offset="22%" stopColor="#1D4ED8" stopOpacity={0.55} />
-                      <stop offset="55%" stopColor="#0F172A" stopOpacity={0.5} />
-                      <stop offset="85%" stopColor="#0F172A" stopOpacity={0.14} />
+                      <stop offset="22%" stopColor="#1D4ED8" stopOpacity={0.65} />
+                      <stop offset="55%" stopColor="#0F172A" stopOpacity={0.58} />
+                      <stop offset="85%" stopColor="#0F172A" stopOpacity={0.18} />
                       <stop offset="100%" stopColor="#0F172A" stopOpacity={0} />
                     </linearGradient>
                   );
@@ -458,7 +499,7 @@ export default function App() {
                       r={7}
                       fill="none"
                       stroke="#1D4ED8"
-                      strokeOpacity={0.45}
+                      strokeOpacity={0.55}
                       strokeWidth={1.1}
                       className="arc-ring"
                       style={{ '--delay': `${ringDelay}s` } as CSSProperties}
@@ -492,7 +533,7 @@ export default function App() {
                       x={dot.x + 18}
                       y={dot.y + 22}
                       fill="#1E3A8A"
-                      fillOpacity={0.85}
+                      fillOpacity={0.95}
                       fontSize="8.5"
                       fontWeight={600}
                       letterSpacing="2"
@@ -528,7 +569,7 @@ export default function App() {
             </h1>
 
             <p
-              className="hero-rise text-sm sm:text-base text-[#0F172A]/85 leading-relaxed mb-6 sm:mb-7"
+              className="hero-rise text-sm sm:text-base text-[#0F172A]/90 leading-relaxed mb-6 sm:mb-7"
               style={{ animationDelay: '0.5s' }}
             >
               A future where carbon fiber, titanium, and human instinct align. Not
@@ -536,17 +577,21 @@ export default function App() {
             </p>
 
             <div className="hero-rise" style={{ animationDelay: '0.7s' }}>
-              <button
-                type="button"
-                onClick={() => openModal('reserve')}
-                className="group relative overflow-hidden bg-[#1D4ED8] text-white text-sm font-semibold px-7 sm:px-8 py-3 sm:py-3.5 rounded-full shadow-lg shadow-[#1D4ED8]/25 hover:bg-[#1E40AF] hover:scale-[1.04] active:scale-95 transition-all duration-200 cursor-pointer"
-              >
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"
-                />
-                <span className="relative z-10">Reserve Now</span>
-              </button>
+              <div ref={reserveAnchorRef} className="inline-block">
+                <div ref={reserveMagnetRef} className="inline-block will-change-transform">
+                  <button
+                    type="button"
+                    onClick={() => openModal('reserve')}
+                    className="group relative overflow-hidden bg-[#1D4ED8] text-white text-sm font-semibold px-7 sm:px-8 py-3 sm:py-3.5 rounded-full shadow-lg shadow-[#1D4ED8]/25 hover:bg-[#1E40AF] hover:scale-[1.04] active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#070E1A]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"
+                    />
+                    <span className="relative z-10">Reserve Now</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -563,7 +608,7 @@ export default function App() {
             if (e.target === e.currentTarget) setModalMode(null);
           }}
         >
-          <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 p-6 text-[#070E1A] shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl bg-[#f1f5ff] border border-[#0F172A]/20 p-6 text-[#070E1A] shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <p className="text-[11px] font-semibold tracking-[0.12em] text-[#1D4ED8] uppercase mb-1">
@@ -579,7 +624,7 @@ export default function App() {
                 type="button"
                 onClick={() => setModalMode(null)}
                 aria-label="Close modal"
-                className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-[#070E1A] transition-colors cursor-pointer"
+                className="rounded-full p-2 text-[#0F172A]/70 hover:bg-[#0F172A]/10 hover:text-[#070E1A] transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -612,7 +657,7 @@ export default function App() {
                       id="module-select"
                       value={selectedModule}
                       onChange={(e) => setSelectedModule(e.target.value)}
-                      className="w-full rounded-lg bg-[#F8FAFC] border border-slate-300 px-3 py-2.5 text-sm text-[#070E1A] focus:outline-none focus:border-[#1D4ED8]"
+                      className="w-full rounded-lg bg-white/85 border border-[#0F172A]/20 px-3 py-2.5 text-sm text-[#070E1A] focus:outline-none focus:border-[#1D4ED8]"
                     >
                       <option value="Carbon Spine MK-IV">Carbon Spine MK-IV</option>
                       <option value="Titanium Optic Array">Titanium Optic Array</option>
@@ -634,12 +679,12 @@ export default function App() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@domain.com"
-                    className="w-full rounded-lg bg-[#F8FAFC] border border-slate-300 px-3 py-2.5 text-sm text-[#070E1A] placeholder:text-slate-400 focus:outline-none focus:border-[#1D4ED8]"
+                    className="w-full rounded-lg bg-white/85 border border-[#0F172A]/20 px-3 py-2.5 text-sm text-[#070E1A] placeholder:text-slate-500 focus:outline-none focus:border-[#1D4ED8]"
                   />
                 </div>
 
                 {formError && (
-                  <p role="alert" className="text-xs text-red-600">
+                  <p role="alert" className="text-xs text-red-700 font-medium">
                     {formError}
                   </p>
                 )}
@@ -648,7 +693,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setModalMode(null)}
-                    className="px-4 py-2 text-sm text-slate-600 hover:text-[#070E1A] transition-colors cursor-pointer"
+                    className="px-4 py-2 text-sm text-[#0F172A]/75 hover:text-[#070E1A] transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
